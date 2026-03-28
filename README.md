@@ -8,7 +8,7 @@ Currently, the repository contains experiments around Python execution models, i
 
 | Experiment       | Description                                                                                      | Link                                                     |
 | ---------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
-| Execution Models | Benchmark threads, processes, and subinterpreters across CPU, IO, memory, and network workloads. | [execution-models/README.md](execution-models/README.md) |
+| Execution Models | Benchmark threads, processes, and subinterpreters across CPU, IO, memory, and network workloads. | [README.md](execution-models/README.md) |
 
 
 ### Getting Started
