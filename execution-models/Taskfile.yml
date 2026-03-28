@@ -2,6 +2,7 @@ version: "3"
 
 vars:
   BENCH_DIR: .
+  RESULTS_DIR: "{{.BENCH_DIR}}/results"
   VENV_DIR: .venv
   PYTHON: "{{.VENV_DIR}}/bin/python"
 
@@ -21,26 +22,26 @@ tasks:
   # Benchmark pipeline
   # ----------------------------
   bench:
-    desc: Run full benchmark pipeline
+    desc: Run benchmark + plot (no report)
     cmds:
       - |
         RUN_DIR=$(date +"%d-%m-%Y-%H-%M")
         echo "Results directory: $RUN_DIR"
 
-        mkdir -p {{.BENCH_DIR}}/results/$RUN_DIR/plots
+        mkdir -p {{.RESULTS_DIR}}/$RUN_DIR/plots
 
         echo "Running Python benchmarks..."
-        uv run python {{.BENCH_DIR}}/bench.py $RUN_DIR
+        uv run python {{.BENCH_DIR}}/bench.py "$RUN_DIR"
 
         if [ -f "{{.BENCH_DIR}}/compare.py" ]; then
           echo "Comparing results..."
-          uv run python {{.BENCH_DIR}}/compare.py $RUN_DIR || true
+          uv run python {{.BENCH_DIR}}/compare.py "$RUN_DIR" || true
         fi
 
         echo "Generating plots..."
-        uv run python {{.BENCH_DIR}}/plot.py $RUN_DIR
+        uv run python {{.BENCH_DIR}}/plot.py "$RUN_DIR"
 
-        echo "Done. Results saved to {{.BENCH_DIR}}/results/$RUN_DIR/"
+        echo "Done. Results saved to {{.RESULTS_DIR}}/$RUN_DIR/"
 
   # ----------------------------
   # Plot latest
@@ -49,52 +50,62 @@ tasks:
     desc: Plot latest benchmark results
     cmds:
       - |
-        LATEST=$(ls -dt {{.BENCH_DIR}}/results/*/ 2>/dev/null | head -1)
+        LATEST=$(ls -dt {{.RESULTS_DIR}}/*/ 2>/dev/null | head -1)
 
         if [ -z "$LATEST" ]; then
           echo "No results found. Run 'task bench' first."
           exit 1
         fi
 
-        RUN_DIR=$(basename $LATEST)
+        RUN_DIR=$(basename "$LATEST")
         echo "Using latest run: $RUN_DIR"
 
-        uv run python {{.BENCH_DIR}}/plot.py $RUN_DIR
+        uv run python {{.BENCH_DIR}}/plot.py "$RUN_DIR"
 
   # ----------------------------
-  # Consolidate latest to .md file
+  # Consolidate latest to .md
   # ----------------------------
   consolidate:
-    desc: Generate markdown report
+    desc: Generate markdown report for latest run
     cmds:
       - |
         LATEST=$(ls -dt {{.RESULTS_DIR}}/*/ 2>/dev/null | head -1)
+
         if [ -z "$LATEST" ]; then
           echo "No results found"
           exit 1
         fi
-        RUN_DIR=$(basename $LATEST)
-        uv run python consolidate.py $RUN_DIR
+
+        RUN_DIR=$(basename "$LATEST")
+
+        if [ ! -f "{{.RESULTS_DIR}}/$RUN_DIR/results.json" ]; then
+          echo "Invalid run dir: $RUN_DIR (missing results.json)"
+          exit 1
+        fi
+
+        echo "Generating report for: $RUN_DIR"
+        uv run python {{.BENCH_DIR}}/consolidate.py "$RUN_DIR"
 
   # ----------------------------
-  # Run full pipeline
+  # Full pipeline
   # ----------------------------
   run:
     desc: Full pipeline (bench + plot + consolidate)
     cmds:
       - |
         RUN_DIR=$(date +"%d-%m-%Y-%H-%M")
-        mkdir -p {{.RESULTS_DIR}}/$RUN_DIR/plots
         echo "Run: $RUN_DIR"
 
+        mkdir -p {{.RESULTS_DIR}}/$RUN_DIR/plots
+
         echo "Running benchmark..."
-        uv run python bench.py $RUN_DIR
+        uv run python {{.BENCH_DIR}}/bench.py "$RUN_DIR"
 
         echo "Generating plots..."
-        uv run python plot.py $RUN_DIR
+        uv run python {{.BENCH_DIR}}/plot.py "$RUN_DIR"
 
         echo "Generating report..."
-        uv run python consolidate.py $RUN_DIR
+        uv run python {{.BENCH_DIR}}/consolidate.py "$RUN_DIR"
 
         echo "Done -> {{.RESULTS_DIR}}/$RUN_DIR/"
 
@@ -143,7 +154,7 @@ tasks:
   clean:
     desc: Remove benchmark results
     cmds:
-      - rm -rf {{.BENCH_DIR}}/results/*
+      - rm -rf {{.RESULTS_DIR}}/*
       - echo "Cleaned results"
 
   # ----------------------------
@@ -152,4 +163,4 @@ tasks:
   list:
     desc: List benchmark runs
     cmds:
-      - ls -dt {{.BENCH_DIR}}/results/*/ 2>/dev/null || echo "No runs found"
+      - ls -dt {{.RESULTS_DIR}}/*/ 2>/dev/null || echo "No runs found"
