@@ -1,0 +1,155 @@
+version: "3"
+
+vars:
+  BENCH_DIR: .
+  VENV_DIR: .venv
+  PYTHON: "{{.VENV_DIR}}/bin/python"
+
+tasks:
+
+  # ----------------------------
+  # Setup (uv)
+  # ----------------------------
+  setup:
+    desc: Create venv and install dependencies using uv
+    cmds:
+      - uv venv {{.VENV_DIR}}
+      - uv sync
+      - echo "Environment ready"
+
+  # ----------------------------
+  # Benchmark pipeline
+  # ----------------------------
+  bench:
+    desc: Run full benchmark pipeline
+    cmds:
+      - |
+        RUN_DIR=$(date +"%d-%m-%Y-%H-%M")
+        echo "Results directory: $RUN_DIR"
+
+        mkdir -p {{.BENCH_DIR}}/results/$RUN_DIR/plots
+
+        echo "Running Python benchmarks..."
+        uv run python {{.BENCH_DIR}}/bench.py $RUN_DIR
+
+        if [ -f "{{.BENCH_DIR}}/compare.py" ]; then
+          echo "Comparing results..."
+          uv run python {{.BENCH_DIR}}/compare.py $RUN_DIR || true
+        fi
+
+        echo "Generating plots..."
+        uv run python {{.BENCH_DIR}}/plot.py $RUN_DIR
+
+        echo "Done. Results saved to {{.BENCH_DIR}}/results/$RUN_DIR/"
+
+  # ----------------------------
+  # Plot latest
+  # ----------------------------
+  plot:
+    desc: Plot latest benchmark results
+    cmds:
+      - |
+        LATEST=$(ls -dt {{.BENCH_DIR}}/results/*/ 2>/dev/null | head -1)
+
+        if [ -z "$LATEST" ]; then
+          echo "No results found. Run 'task bench' first."
+          exit 1
+        fi
+
+        RUN_DIR=$(basename $LATEST)
+        echo "Using latest run: $RUN_DIR"
+
+        uv run python {{.BENCH_DIR}}/plot.py $RUN_DIR
+
+  # ----------------------------
+  # Consolidate latest to .md file
+  # ----------------------------
+  consolidate:
+    desc: Generate markdown report
+    cmds:
+      - |
+        LATEST=$(ls -dt {{.RESULTS_DIR}}/*/ 2>/dev/null | head -1)
+        if [ -z "$LATEST" ]; then
+          echo "No results found"
+          exit 1
+        fi
+        RUN_DIR=$(basename $LATEST)
+        uv run python consolidate.py $RUN_DIR
+
+  # ----------------------------
+  # Run full pipeline
+  # ----------------------------
+  run:
+    desc: Full pipeline (bench + plot + consolidate)
+    cmds:
+      - |
+        RUN_DIR=$(date +"%d-%m-%Y-%H-%M")
+        mkdir -p {{.RESULTS_DIR}}/$RUN_DIR/plots
+        echo "Run: $RUN_DIR"
+
+        echo "Running benchmark..."
+        uv run python bench.py $RUN_DIR
+
+        echo "Generating plots..."
+        uv run python plot.py $RUN_DIR
+
+        echo "Generating report..."
+        uv run python consolidate.py $RUN_DIR
+
+        echo "Done -> {{.RESULTS_DIR}}/$RUN_DIR/"
+
+  # ----------------------------
+  # Lint (ruff)
+  # ----------------------------
+  lint:
+    desc: Run lint checks
+    cmds:
+      - uv run ruff check .
+
+  lint-fix:
+    desc: Auto-fix lint issues (including imports)
+    cmds:
+      - uv run ruff check . --fix
+
+  # ----------------------------
+  # Import sorting
+  # ----------------------------
+  imports:
+    desc: Fix import ordering via ruff
+    cmds:
+      - uv run ruff check . --select I --fix
+
+  # ----------------------------
+  # Formatting
+  # ----------------------------
+  format:
+    desc: Format code with black
+    cmds:
+      - uv run black .
+
+  # ----------------------------
+  # Full dev pass
+  # ----------------------------
+  dev:
+    desc: Format + lint fix + import sort
+    cmds:
+      - task: format
+      - task: imports
+      - task: lint-fix
+
+  # ----------------------------
+  # Clean
+  # ----------------------------
+  clean:
+    desc: Remove benchmark results
+    cmds:
+      - rm -rf {{.BENCH_DIR}}/results/*
+      - echo "Cleaned results"
+
+  # ----------------------------
+  # List runs
+  # ----------------------------
+  list:
+    desc: List benchmark runs
+    cmds:
+      - ls -dt {{.BENCH_DIR}}/results/*/ 2>/dev/null || echo "No runs found"
